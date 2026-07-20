@@ -1,0 +1,22 @@
+# Локальные данные и скрипт чтения с диска (не для GitHub)
+data/
+local/
+tests/
+scripts/prepare_test_fixtures.py
+*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+
+

@@ -1,0 +1,11 @@
+.git
+.cursor
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+local
+data
+scripts
+*.md
+agent-transcripts
