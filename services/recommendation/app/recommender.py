@@ -1,11 +1,27 @@
 """Рекомендации маркеров для повышения прогноза (Задача 3)"""
 
 from __future__ import annotations
-from typing import Any
+
+import logging
+from contextlib import contextmanager
+from typing import Any, Iterator
+
 from core.predictor import PredictError, predict_success
 from app.patterns import TAG_APPEND_SEP, extract_case_tags, resolve_case_tags, resolve_case_tags_source
 
 MAX_CANDIDATES = 12
+
+
+@contextmanager
+def _quiet_predictor() -> Iterator[None]:
+    """Не дублировать детальные логи Задачи 2 при симуляциях кандидатов."""
+    pred_logger = logging.getLogger("taxfacto.predictor")
+    previous = pred_logger.disabled
+    pred_logger.disabled = True
+    try:
+        yield
+    finally:
+        pred_logger.disabled = previous
 
 
 def _collect_candidates(query_text: str, similar_cases: list[dict]) -> list[str]:
@@ -43,7 +59,7 @@ def recommend_markers(
         similar_cases: [{ "text", "outcome", "case_id"?, "tags"? }, ...]
         prediction: { "probability": int } — выход Задачи 2
     Returns:
-        baseline_probability, extracted_tags, recommendations
+        baseline_probability, extracted_tags, recommendations, n_candidates
     """
 
 
@@ -75,26 +91,28 @@ def recommend_markers(
         )
 
     candidates = _collect_candidates(query_text, similar_cases)[:max_candidates]
+    n_candidates = len(candidates)
 
     recommendations: list[dict[str, Any]] = []
-    for tag in candidates:
-        try:
-            result = predict_success(
-                query_text + TAG_APPEND_SEP + tag,
-                similar_cases,
-            )
-        except PredictError:
-            continue
+    with _quiet_predictor():
+        for tag in candidates:
+            try:
+                result = predict_success(
+                    query_text + TAG_APPEND_SEP + tag,
+                    similar_cases,
+                )
+            except PredictError:
+                continue
 
-        p1 = int(result["probability"])
-        if p1 > p0:
-            recommendations.append(
-                {
-                    "tag": tag,
-                    "gain": p1 - p0,
-                    "simulated_probability": p1,
-                }
-            )
+            p1 = int(result["probability"])
+            if p1 > p0:
+                recommendations.append(
+                    {
+                        "tag": tag,
+                        "gain": p1 - p0,
+                        "simulated_probability": p1,
+                    }
+                )
 
     recommendations.sort(key=lambda item: item["gain"], reverse=True)
 
@@ -102,4 +120,5 @@ def recommend_markers(
         "baseline_probability": p0,
         "extracted_tags": extracted_tags,
         "recommendations": recommendations,
+        "n_candidates": n_candidates,
     }

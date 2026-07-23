@@ -25,6 +25,7 @@ from core.predictor import PredictError, predict_success, tokenize
 
 configure_logging()
 logger = logging.getLogger("taxfacto.prediction")
+ui_logger = logging.getLogger("taxfacto.prediction.ui")
 
 
 app = FastAPI(title="Task 2 Predictor", version="1.0.0")
@@ -59,19 +60,24 @@ def health() -> dict[str, str]:
 @app.post("/api/v1/predict", response_model=PredictResponse)
 def predict(request_body: PredictRequest, request: Request) -> dict[str, Any]:
     req_id = _request_id(request)
-    started = time.perf_counter() 
+    started = time.perf_counter()
     case_ids = [c.case_id for c in request_body.similar_cases if c.case_id]
-    case_ids_str = ",".join(case_ids) if case_ids else "-"
+    case_ids_str = ", ".join(case_ids) if case_ids else "-"
+    n_cases = len(request_body.similar_cases)
     query_word_count = len(tokenize(request_body.query_text))
+    query_len = len(request_body.query_text)
 
     logger.info(
         "predict_request request_id=%s n_cases=%s query_len=%s query_word_count=%s case_ids=%s",
         req_id,
-        len(request_body.similar_cases),
-        len(request_body.query_text),
+        n_cases,
+        query_len,
         query_word_count,
         case_ids_str,
     )
+    ui_logger.info("[%s] Загрузка дела", req_id)
+    ui_logger.info("[%s] Обработка текста запроса..", req_id)
+    ui_logger.info("[%s] Запрос: %s слов, %s символов", req_id, query_word_count, query_len)
 
     try:
         result = predict_success(
@@ -87,6 +93,7 @@ def predict(request_body: PredictRequest, request: Request) -> dict[str, Any]:
             str(exc),
             duration_ms,
         )
+        ui_logger.info("[%s] Ошибка: %s - %s", req_id, exc.code, exc)
         raise HTTPException(
             status_code=400,
             detail={"error": exc.code, "message": str(exc)},
@@ -99,17 +106,42 @@ def predict(request_body: PredictRequest, request: Request) -> dict[str, Any]:
             type(exc).__name__,
             duration_ms,
         )
+        ui_logger.info("[%s] Внутренняя ошибка (%s)", req_id, type(exc).__name__)
         raise HTTPException(
             status_code=500,
             detail={"error": "INTERNAL_ERROR", "message": "Внутренняя ошибка прогноза"},
         ) from exc
 
+    details = result.get("details", [])
+    n_scored = len(details)
+    n_success = sum(1 for d in details if d["outcome"] == 1)
+    n_refusal = n_scored - n_success
     duration_ms = round((time.perf_counter() - started) * 1000)
+
     logger.info(
         "predict_ok request_id=%s probability=%s n_scored=%s duration_ms=%s",
         req_id,
         result["probability"],
-        len(result.get("details", [])),
+        n_scored,
         duration_ms,
+    )
+    # details уже отсортированы по убыванию схожести (predictor.py)
+    scored_summary = ", ".join(
+        f"{d.get('case_id') or 'unknown'}: {d['similarity_pct']}%"
+        for d in details
+    )
+    ui_logger.info(
+        "[%s] Загружено релевантных дел: %s (удовлетворённых: %s, отказов: %s)",
+        req_id,
+        n_scored,
+        n_success,
+        n_refusal,
+    )
+    ui_logger.info("[%s] Расчёт схожести..", req_id)
+    ui_logger.info("[%s] Схожесть по делам: [%s]", req_id, scored_summary)
+    ui_logger.info(
+        "[%s] Вероятность удовлетворения запроса: %s%%",
+        req_id,
+        result["probability"],
     )
     return result
