@@ -1,9 +1,16 @@
 # Локальные данные и скрипт чтения с диска (не для GitHub)
 data/
-local/
+local/*
+!local/run_pipeline.py
+!local/ML/
+local/ML/*
+!local/ML/text_reference.csv
+!local/ML/text_test.csv
 tests/
 scripts/prepare_test_fixtures.py
 *.csv
+!local/ML/text_reference.csv
+!local/ML/text_test.csv
 
 # Python
 __pycache__/
